@@ -61,7 +61,7 @@ export function getItemStyle(item: Item): StyleClipboard {
 export function filterItemStyle(style: string, isItem: boolean) {
     if (typeof style !== "string" || !style) return ""
 
-    const { inline, blocks } = splitCustomCSS(style)
+    const { inline, blocks, imports } = splitCustomCSS(style)
     const itemKeys = getItemKeys()
     const styles = getStyles(inline)
 
@@ -77,15 +77,17 @@ export function filterItemStyle(style: string, isItem: boolean) {
         if (isItem ? hasItemKey : !hasItemKey) newStyle += `${key}: ${value};`
     })
 
-    // keep @keyframes and other blocks
-    if (blocks.length) newStyle += (newStyle ? "\n" : "") + blocks.join("\n")
+    // keep @import statements and @keyframes blocks
+    const customCSS = [...imports, ...blocks]
+    if (customCSS.length) newStyle += (newStyle ? "\n" : "") + customCSS.join("\n")
     return newStyle
 }
 export function mergeWithStyle(newStyle: string, oldStyle: string, isItem: boolean) {
     const old = splitCustomCSS(oldStyle)
     const next = splitCustomCSS(newStyle)
     const inline = filterItemStyle(old.inline, !isItem) + next.inline
-    const blocks = [...new Set([...old.blocks, ...next.blocks])]
+    // imports must stay above the rules that use them
+    const blocks = [...new Set([...old.imports, ...next.imports, ...old.blocks, ...next.blocks])]
     return inline + (blocks.length ? (inline ? "\n" : "") + blocks.join("\n") : "")
 }
 

@@ -3,22 +3,23 @@ import type { StringObject } from "../../../types/Main"
 const cache = new Map<string, StringObject>()
 const DONT_REPLACE = ["color", "background", "text-decoration", "text-transform", "text-shadow", "box-shadow", "font-family", "transform", "shape-outside"]
 
-type SplitCSS = { inline: string; blocks: string[] }
+type SplitCSS = { inline: string; blocks: string[]; imports: string[] }
 const cssCache = new Map<string, SplitCSS>()
 
-export type ScopedCSS = { inline: string; blocks: string; scope: string; prefix: string; keyframes: string[] }
+export type ScopedCSS = { inline: string; blocks: string; scope: string; prefix: string; keyframes: string[]; imports: string[] }
 const scopedCache = new Map<string, ScopedCSS>()
 const inlineScopeCache = new Map<string, string>()
 
 // separate normal declarations from blocks like @keyframes so they can be applied to a stylesheet instead of the inline style
 export function splitCustomCSS(css: string | null | undefined): SplitCSS {
-    if (typeof css !== "string" || !css.trim()) return { inline: "", blocks: [] }
+    if (typeof css !== "string" || !css.trim()) return { inline: "", blocks: [], imports: [] }
 
     const cached = cssCache.get(css)
     if (cached) return cached
 
     let inline = ""
     const blocks: string[] = []
+    const imports: string[] = []
     let i = 0
     let start = 0
 
@@ -33,6 +34,16 @@ export function splitCustomCSS(css: string | null | undefined): SplitCSS {
         if (char === "/" && css[i + 1] === "*") {
             const end = css.indexOf("*/", i + 2)
             i = end === -1 ? css.length : end + 2
+            continue
+        }
+
+        // @import can only live in a stylesheet at the very top, never in an inline style attribute
+        if (char === "@" && /^@import(?:\s|$)/i.test(css.slice(i, i + 9))) {
+            const end = findCSSStatementEnd(css, i)
+            const statement = css.slice(i, end + 1).trim()
+            if (statement) imports.push(statement)
+            i = end + 1
+            start = i
             continue
         }
 
@@ -58,18 +69,69 @@ export function splitCustomCSS(css: string | null | undefined): SplitCSS {
     const rest = css.slice(start).trim()
     if (rest) inline += rest.endsWith(";") ? rest : rest + ";"
 
-    const result: SplitCSS = { inline: inline.trim(), blocks: [...new Set(blocks)] }
+    const result: SplitCSS = { inline: inline.trim(), blocks: [...new Set(blocks)], imports: [...new Set(imports)] }
     if (cssCache.size > 500) cssCache.clear()
     cssCache.set(css, result)
     return result
 }
 
 export function getStyleBlocks(css: string | null | undefined): string {
-    return splitCustomCSS(css).blocks.join("\n")
+    const { imports, blocks } = splitCustomCSS(css)
+    return [...imports, ...blocks].join("\n")
+}
+
+// custom CSS that can't be stored in an inline style attribute
+export function hasCSSBlocks(css: string | null | undefined): boolean {
+    return typeof css === "string" && (css.includes("{") || /@import\b/i.test(css))
 }
 
 export function getInlineStyle(css: string | null | undefined): string {
     return splitCustomCSS(css).inline
+}
+
+// plain text for CSS attributes like content: attr(data-text), where tags would show up as raw markup
+export function getPlainText(value: string | null | undefined): string {
+    if (typeof value !== "string" || !value) return ""
+
+    return value
+        .replace(/<br\s*\/?>/gi, " ")
+        .replace(/<[^>]*>/g, "")
+        .replace(/&nbsp;/gi, " ")
+        .replace(/&lt;/gi, "<")
+        .replace(/&gt;/gi, ">")
+        .replace(/&quot;/gi, '"')
+        .replace(/&#0*39;|&apos;/gi, "'")
+        .replace(/&amp;/gi, "&")
+}
+
+// font size custom CSS sets on the element itself, so units like vw can be kept instead of being replaced by px
+export function getCustomFontSizeValue(css: string | null | undefined): string {
+    if (typeof css !== "string" || !css.includes("font-size")) return ""
+
+    const { inline, blocks } = splitCustomCSS(css)
+    let declarations = inline
+
+    blocks.forEach((block) => {
+        if (/^\s*@/i.test(block)) return
+
+        const open = block.indexOf("{")
+        if (open === -1) return
+
+        // pseudo-elements and children can have their own size, only rules for the element itself count
+        const targetsElement = splitSelectorList(block.slice(0, open)).some((selector) => selector.replace(/\s+/g, "") === "&")
+        if (!targetsElement) return
+
+        declarations += ";" + block.slice(open + 1, block.lastIndexOf("}"))
+    })
+
+    let value = ""
+    declarations.replace(/(?:^|[;{])\s*font-size\s*:\s*([^;}]+)/gi, (_match, size: string) => {
+        const next = size.trim().replace(/\s*!important$/i, "")
+        if (next && !/^\d*\.?\d+px$/i.test(next)) value = next
+        return ""
+    })
+
+    return value
 }
 
 // short deterministic id, used to keep custom selectors & keyframes local to one element
@@ -323,7 +385,7 @@ export function scopeCustomCSS(css: string | null | undefined, scope = "", prefi
     const cached = scopedCache.get(cacheKey)
     if (cached) return cached
 
-    const { inline, blocks } = splitCustomCSS(source)
+    const { inline, blocks, imports } = splitCustomCSS(source)
     const keyframes = getKeyframeNames(source)
     const scopeSelector = `[data-fs-scope="${finalScope}"]`
 
@@ -335,10 +397,12 @@ export function scopeCustomCSS(css: string | null | undefined, scope = "", prefi
 
     const result: ScopedCSS = {
         inline: prefixAnimationNames(inline, keyframes, finalPrefix),
-        blocks: scopedBlocks,
+        // imported stylesheets are global, but @import must come before any other rule
+        blocks: [imports.join("\n"), scopedBlocks].filter(Boolean).join("\n"),
         scope: finalScope,
         prefix: finalPrefix,
-        keyframes
+        keyframes,
+        imports
     }
 
     if (scopedCache.size > 500) scopedCache.clear()
@@ -393,6 +457,34 @@ function skipCSSString(css: string, start: number): number {
         i++
     }
     return css.length
+}
+
+function findCSSStatementEnd(css: string, start: number): number {
+    let depth = 0
+    let i = start
+
+    while (i < css.length) {
+        const char = css[i]
+
+        if (char === '"' || char === "'") {
+            i = skipCSSString(css, i)
+            continue
+        }
+
+        if (char === "/" && css[i + 1] === "*") {
+            const end = css.indexOf("*/", i + 2)
+            i = end === -1 ? css.length : end + 2
+            continue
+        }
+
+        if (char === "(") depth++
+        else if (char === ")") depth = Math.max(0, depth - 1)
+        else if (char === ";" && depth === 0) return i
+
+        i++
+    }
+
+    return css.length - 1
 }
 
 function findCSSBlockEnd(css: string, start: number): number {

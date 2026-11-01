@@ -390,7 +390,7 @@
     class:isOutput={!!$currentWindow}
     class:isShiftPressed
     data-fs-scope={itemCSS.scope}
-    style="{customStyle}{id.includes('slide') && !id.includes('tracker') ? '' : textStyle}{edit ? `outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);` : ''}--labelColor: {currentShow?.settings?.labelColor || '#d0a853'};{fixedWidth}{cssVariables}"
+    style="{customStyle}{id.includes('slide') && !id.includes('tracker') ? '' : textStyle}{edit ? `outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);` : ''}--labelColor: {currentShow?.settings?.labelColor || '#d0a853'};--fs-index: {Math.max(0, Number(id) || 0)};{fixedWidth}{cssVariables}"
     on:mousedown={mousedown}
 >
     <ItemCSS css={item?.style} scope={itemCSS.scope} prefix={itemCSS.prefix} />

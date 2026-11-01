@@ -12,7 +12,7 @@
     import { addToPos } from "../../helpers/mover"
     import { getLayoutRef } from "../../helpers/show"
     import { _show } from "../../helpers/shows"
-    import { getItemScope, getStyles } from "../../helpers/style"
+    import { getItemScope, getStyleBlocks, getStyles } from "../../helpers/style"
     import ItemCSS from "../../helpers/ItemCSS.svelte"
     import autosize, { getAutoSizeOptions } from "../scripts/autosize"
     import { calculateShapeVerticalOffset, getShapeFloatSide } from "../scripts/shapeOutside"
@@ -42,6 +42,41 @@
     let html = ""
     let previousHTML = ""
     let currentStyle = ""
+
+    // CSS can repeat the text with content: attr(data-text), keep it in sync while typing
+    function syncDataText(node: HTMLElement) {
+        let frame = 0
+        const pending = new Set<Element>()
+
+        function collect(target: Node | null) {
+            if (!target) return
+
+            const element = target.nodeType === Node.ELEMENT_NODE ? (target as Element) : target.parentElement
+            const span = element?.closest?.("span[data-freeshow-text]")
+            if (span) pending.add(span)
+
+            if (frame) return
+            frame = requestAnimationFrame(() => {
+                frame = 0
+                pending.forEach((span) => {
+                    const text = span.textContent || ""
+                    if (span.getAttribute("data-text") !== text) span.setAttribute("data-text", text)
+                })
+                pending.clear()
+            })
+        }
+
+        const observer = new MutationObserver((mutations) => mutations.forEach((mutation) => collect(mutation.target)))
+        observer.observe(node, { subtree: true, characterData: true, childList: true })
+
+        return {
+            destroy() {
+                observer.disconnect()
+                if (frame) cancelAnimationFrame(frame)
+                pending.clear()
+            }
+        }
+    }
 
     // WIP pressing line break on empty html (textbox) does not work, but it works after typing something
 
@@ -477,6 +512,9 @@
             const sourceLine = plain ? attrIndex(line, "data-line-index", i) : i
             let align: string = plain ? (typeof item.lines?.[sourceLine]?.align === "string" ? (item.lines?.[sourceLine]?.align as string) : "") : line.getAttribute("style") || ""
             align = align.replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
+
+            // custom CSS blocks live outside the inline style, add them back so typing does not remove them
+            if (!plain) align += getStyleBlocks(line.getAttribute("data-fs-style"))
             pos++
             currentStyle += align + lineStyleBg + lineStyleRadius
 
@@ -529,6 +567,12 @@
                 // remove custom font size
                 let customIndex = style.indexOf("--custom")
                 if (customIndex > -1) style = style.slice(0, customIndex)
+
+                // custom CSS blocks live outside the inline style, add them back so typing does not remove them
+                if (!plain) {
+                    const blocks = getStyleBlocks(child.getAttribute("data-fs-style"))
+                    if (blocks) style = (style ? style.replace(/;\s*$/, "") + ";" : "") + blocks
+                }
 
                 // GET custom values
                 let customType = child.getAttribute("data-customtype") || undefined
@@ -773,6 +817,7 @@
                 class:hasShapeOutside={!!shapeOutside}
                 class:autoSize={isAuto && autoSize && !plain}
                 contenteditable
+                use:syncDataText
                 on:keydown={textElemKeydown}
                 on:input={() => scheduleAutoSize()}
                 on:compositionstart={() => (composing = true)}

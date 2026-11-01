@@ -1,7 +1,11 @@
 import type { Item, Line } from "../../../../types/Show"
 import { clone } from "../../helpers/array"
-import { scopeInlineStyle } from "../../helpers/style"
+import { getPlainText, hasCSSBlocks, scopeInlineStyle } from "../../helpers/style"
 import { getItemText } from "../scripts/textStyle"
+
+function escapeAttribute(value: string): string {
+    return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/'/g, "&#39;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
 
 export class EditboxHelper {
     // Compare text of all the new lines to determine if it's truly a modification or just an index change.
@@ -185,16 +189,19 @@ export class EditboxHelper {
         const lines: Line[] = item?.lines?.length ? item.lines : [{ align: "", text: [{ style: "", value: "" }] }]
 
         lines.forEach((line, i) => {
-            const align = (typeof line.align === "string" ? line.align : "").replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
+            const rawAlign = typeof line.align === "string" ? line.align : ""
+            const align = rawAlign.replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
             currentStyle += align + lineStyleBg + lineStyleRadius // + line.chords?.map((a) => a.key)
             const scopedAlign = scopeInlineStyle(align, prefix)
             const style = scopedAlign || lineStyleBg || lineStyleRadius || listStyle ? 'style="' + scopedAlign + lineStyleBg + lineStyleRadius + listStyle + '"' : ""
-            const lineScope = scope && align.includes("{") ? ` data-fs-scope="${scope}-l${i}"` : ""
+            // blocks are not part of the inline style, keep them so editing the text does not remove the custom CSS
+            const storedAlignStyle = !plain && hasCSSBlocks(rawAlign) ? ` data-fs-style="${escapeAttribute(rawAlign)}"` : ""
+            const lineScope = scope && hasCSSBlocks(align) ? ` data-fs-scope="${scope}-l${i}"` : ""
 
             const normalWrap = useNormalWrap || align.includes("justify") || align.includes("left") || JSON.stringify(line).includes("nowrap")
 
             // plain mode has no style attributes, identity attributes map styles back to the source lines (they are cloned when the browser splits a line)
-            html += `<div class="break ${normalWrap ? "normalWrap" : ""}" ${plain ? `data-line-index="${i}"` : style}${lineScope}>`
+            html += `<div class="break ${normalWrap ? "normalWrap" : ""}" ${plain ? `data-line-index="${i}"` : style}${lineScope}${storedAlignStyle}>`
 
             // fix removing all text in a line
             if (i === 0 && line.text?.[0]?.style) firstTextStyleArchive = line.text?.[0]?.style || ""
@@ -216,12 +223,13 @@ export class EditboxHelper {
                 // @keyframes and other blocks are injected separately, they can't live in the inline style
                 const inlineTextStyle = scopeInlineStyle(a.style, prefix)
                 const textStyle = inlineTextStyle || listStyle ? 'style="' + this.getCustomTextStyle(inlineTextStyle) + listStyle + '"' : ""
-                const textScope = scope && a.style?.includes("{") ? ` data-fs-scope="${scope}-s${i}-${tIndex}"` : ""
+                const textScope = scope && hasCSSBlocks(a.style) ? ` data-fs-scope="${scope}-s${i}-${tIndex}"` : ""
+                const storedTextStyle = !plain && hasCSSBlocks(a.style) ? ` data-fs-style="${escapeAttribute(a.style || "")}"` : ""
                 let value = a.value?.replaceAll("\n", "<br>") || "<br>"
                 // if (value === " ") value = "&nbsp;"
 
                 // this will "hide" any HTML tags if any in the actual text content (not chords or text editor)
-                html += `<span data-freeshow-text="true" class="${a.customType && !a.customType.includes("jw") ? "custom" : ""}" ${plain ? `data-text-index="${tIndex}"` : textStyle}${textScope} data-customtype='${a.customType || ""}' data-sourcedynamickey='${a.sourceDynamicKey || ""}' data-chords='${JSON.stringify(textChords)}'>` + value + "</span>"
+                html += `<span data-freeshow-text="true" class="${a.customType && !a.customType.includes("jw") ? "custom" : ""}" ${plain ? `data-text-index="${tIndex}"` : textStyle}${textScope} data-text="${escapeAttribute(getPlainText(value))}"${storedTextStyle} data-customtype='${a.customType || ""}' data-sourcedynamickey='${a.sourceDynamicKey || ""}' data-chords='${JSON.stringify(textChords)}'>` + value + "</span>"
             })
             html += "</div>"
         })

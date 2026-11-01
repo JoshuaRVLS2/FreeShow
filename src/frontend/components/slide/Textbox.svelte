@@ -817,7 +817,7 @@
 <!-- lyrics view must have "width: 100%;height: 100%;" set -->
 <div
     class="item"
-    style="{style ? getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId, styleIdOverride, { $styles }) : 'width: 100%;height: 100%;'};{paddingCorrection}{foregroundFilters}{animationStyle.item || ''}{cssVariables}{fixedWidth}"
+    style="{style ? getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId, styleIdOverride, { $styles }) : 'width: 100%;height: 100%;'};{paddingCorrection}{foregroundFilters}{animationStyle.item || ''}--fs-index: {Math.max(0, itemIndex)};{cssVariables}{fixedWidth}"
     class:white={key && !lines?.length}
     class:key
     class:isStage

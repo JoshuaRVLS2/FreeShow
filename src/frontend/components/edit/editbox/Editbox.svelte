@@ -276,7 +276,7 @@
     class:isShiftPressed
     data-fs-scope={itemCSS.scope}
     use:effectReplay={{ trigger: effectTrigger, slideKey: ref?.showId || ref?.id }}
-    style="{plain ? 'width: 100%;' : `${getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId)}; outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);z-index: ${index + 1 + ($activeEdit.items.includes(index) ? 100 : 0)};${filter ? 'filter: ' + filter + ';' : ''}${backdropFilter ? 'backdrop-filter: ' + backdropFilter + ';' : ''}`}{cssVariables}{fixedWidth}"
+    style="{plain ? 'width: 100%;' : `${getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId)}; outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);z-index: ${index + 1 + ($activeEdit.items.includes(index) ? 100 : 0)};${filter ? 'filter: ' + filter + ';' : ''}${backdropFilter ? 'backdrop-filter: ' + backdropFilter + ';' : ''}`}--fs-index: ${Math.max(0, index)};{cssVariables}{fixedWidth}"
     data-index={index}
     on:mousedown={mousedown}
     on:dblclick={dblclick}

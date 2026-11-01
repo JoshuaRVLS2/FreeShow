@@ -82,7 +82,7 @@ export function addStyleString(oldStyle: string, style: any[]): string {
     if (typeof oldStyle !== "string") return ""
 
     // keep @keyframes and other blocks separate from the declarations
-    const { inline, blocks } = splitCustomCSS(oldStyle)
+    const { inline, blocks, imports } = splitCustomCSS(oldStyle)
 
     let array: string[] = inline.split(";")
     // remove last if empty
@@ -110,6 +110,7 @@ export function addStyleString(oldStyle: string, style: any[]): string {
     let newStyle: string = array.join(";")
     if (newStyle && newStyle.slice(-1) !== ";") newStyle += ";"
     if (blocks.length) newStyle += (newStyle ? "\n" : "") + blocks.join("\n")
+    if (imports.length) newStyle = imports.join("\n") + (newStyle ? "\n" + newStyle : "")
     return newStyle
 }
 

@@ -110,8 +110,8 @@
         style = (item.type || "text") === "text" && !isStage ? currentStyle : filterItemStyle(currentStyle, isItem)
         if (!style) return ""
 
-        // full CSS with @keyframes and other blocks is shown exactly as authored
-        if (style.includes("{")) return style.trim()
+        // full CSS with @keyframes, @import and other blocks is shown exactly as authored
+        if (style.includes("{") || /@import\b/i.test(style)) return style.trim()
 
         // sort alphabetically
         let split = style.split(";").filter((a) => a)
@@ -223,7 +223,7 @@
 
         if (input.id.includes("CSS")) {
             // keep full CSS readable, plain declarations stay on a single line
-            if (!value.includes("{")) value = value.replaceAll("\n", "")
+            if (!value.includes("{") && !/@import\b/i.test(value)) value = value.replaceAll("\n", "")
             value = (item.type || "text") === "text" && !isStage ? value : mergeWithStyle(value, item.style, input.id === "CSS_item")
         }
 

@@ -8,7 +8,7 @@
     import { clone } from "../helpers/array"
     import { getFirstActiveOutput } from "../helpers/output"
     import { replaceDynamicValues } from "../helpers/showActions"
-    import { getCSSScope, getInlineStyle, getStyles, scopeInlineStyle } from "../helpers/style"
+    import { getCSSScope, getCustomFontSizeValue, getInlineStyle, getPlainText, getStyles, scopeInlineStyle } from "../helpers/style"
     import ItemCSS from "../helpers/ItemCSS.svelte"
     import { calculateShapeVerticalOffset, getShapeFloatSide } from "../edit/scripts/shapeOutside"
     import { applyStyleOverrides } from "./wordOverride"
@@ -85,8 +85,10 @@
 
         // text gradient
 
+        // only a gradient stored in "color" is converted, a background gradient is already complete CSS
         const gradientCount = (style.match(/-gradient/g) || []).length
-        if (style.includes("-gradient") && (gradientCount > 1 || !style.includes("-webkit-mask-image: linear-gradient"))) {
+        const hasColorGradient = /(?:^|;)\s*color\s*:[^;]*-gradient/i.test(style)
+        if (hasColorGradient && (gradientCount > 1 || !style.includes("-webkit-mask-image: linear-gradient"))) {
             let styles = getStyles(style)
             const gradient = styles.color
             style += `background-image: ${gradient};color: transparent;background-clip: text;`
@@ -196,6 +198,11 @@
 
     function getCustomFontSize(style: string, outputStyle: Styles | null) {
         if (style?.includes("--base-font-size") || style?.includes("font-size: calc(")) return ""
+
+        // custom CSS can use its own unit (vw, em, ...), keep it instead of replacing it with a px size
+        const customSize = getCustomFontSizeValue(style)
+        if (customSize) return `;font-size: ${customSize};`
+
         return `;font-size: ${resolveFontSize(style, outputStyle)}px;`
     }
 
@@ -426,11 +433,15 @@
                                                 {@const fontRatio = text.customType?.includes("disableTemplate") && !text.customType?.includes("jw") ? customTypeRatio : 1}
                                                 {@const segmentFontSize = fontSize ? fontSize * fontRatio : style ? resolveFontSize(text.baseStyle || text.style, outputStyle) : 100}
                                                 {@const textScope = `${baseScope}-s${i}-${ti}`}
+                                                {@const renderedValue = getTextValue(value, i, ti, updateDynamic)}
 
                                                 <!-- NOTE: must be on the same line for rendering ...>{@html -->
                                                 <ItemCSS css={text.style} scope={textScope} prefix={cssPrefix} />
-                                                <span class="textContainer" data-fs-scope={text.style?.includes("{") ? textScope : undefined} style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;"
-                                                    >{@html getTextValue(value, i, ti, updateDynamic)}</span
+                                                <span
+                                                    class="textContainer"
+                                                    data-fs-scope={text.style?.includes("{") ? textScope : undefined}
+                                                    data-text={getPlainText(renderedValue)}
+                                                    style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;">{@html renderedValue}</span
                                                 >
                                             {/each}
                                         {/if}
@@ -490,11 +501,15 @@
                                     {@const fontRatio = text.customType?.includes("disableTemplate") && !text.customType?.includes("jw") ? customTypeRatio : 1}
                                     {@const segmentFontSize = fontSize ? fontSize * fontRatio : style ? resolveFontSize(text.baseStyle || text.style, outputStyle) : 100}
                                     {@const textScope = `${baseScope}-s${i}-${ti}`}
+                                    {@const renderedValue = getTextValue(value, i, ti, updateDynamic)}
 
                                     <!-- NOTE: must be on the same line for rendering ...>{@html -->
                                     <ItemCSS css={text.style} scope={textScope} prefix={cssPrefix} />
-                                    <span class="textContainer" data-fs-scope={text.style?.includes("{") ? textScope : undefined} style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;"
-                                        >{@html getTextValue(value, i, ti, updateDynamic)}</span
+                                    <span
+                                        class="textContainer"
+                                        data-fs-scope={text.style?.includes("{") ? textScope : undefined}
+                                        data-text={getPlainText(renderedValue)}
+                                        style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;">{@html renderedValue}</span
                                     >
                                 {/each}
                             {/if}

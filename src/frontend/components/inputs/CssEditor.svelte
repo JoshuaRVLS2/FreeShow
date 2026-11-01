@@ -13,7 +13,7 @@
     import { replaySelectedEffects } from "../helpers/effects"
     import { getVariableNameId } from "../helpers/showActions"
     import { getStyles } from "../helpers/style"
-    import { cssPresets, getCSSPresetGroups } from "./cssPresets"
+    import { cssLibrary, deleteCSSLibraryItem, saveCSSLibraryItem, type CSSLibraryContext, type CSSLibraryItem } from "./cssLibrary"
 
     export let value = ""
     export let label = "CSS"
@@ -27,11 +27,15 @@
     let lastApplied = value
     let syncing = false
     let changeTimeout: ReturnType<typeof setTimeout> | null = null
-    let helpOpen = false
+    let libraryOpen = false
+    let saveName = ""
+    let libraryNotice = ""
+    let noticeTimeout: ReturnType<typeof setTimeout> | null = null
 
     $: trigger = getStyles(value)["--fs-trigger"] || "mount"
     $: triggerHint = trigger === "slide" ? "Replays each time this slide becomes active." : trigger === "click" ? "Replays when Click reveal shows this item." : "Plays once, when this element is created."
-    $: presetGroups = getCSSPresetGroups(showTrigger ? "item" : "text")
+    $: editorContext = (showTrigger ? "item" : "text") as CSSLibraryContext
+    $: libraryItems = $cssLibrary.filter((a) => a.context === editorContext)
 
     const slideVariableOptions: Completion[] = [
         { label: "--slide-group-color", detail: "Current slide group color", type: "variable" },
@@ -148,16 +152,33 @@
         dispatch("change", nextValue)
     }
 
-    function insertPreset(id: string) {
-        const preset = cssPresets.find((a) => a.id === id)
-        if (!preset || !view) return
+    function toggleLibrary() {
+        libraryOpen = !libraryOpen
+    }
+
+    function clearNoticeTimeout() {
+        if (!noticeTimeout) return
+        clearTimeout(noticeTimeout)
+        noticeTimeout = null
+    }
+
+    function saveCurrent() {
+        if (!view) return
+
+        const saved = saveCSSLibraryItem(saveName, view.state.doc.toString(), editorContext)
+        if (!saved) return
+
+        saveName = ""
+        libraryNotice = `Saved "${saved.name}"`
+        clearNoticeTimeout()
+        noticeTimeout = setTimeout(() => (libraryNotice = ""), 2200)
+    }
+
+    function insertLibrary(item: CSSLibraryItem) {
+        if (!view) return
 
         const doc = view.state.doc.toString()
-        let snippet = preset.css.trim()
-
-        // keep the trigger the user already picked, and never add one to text CSS
-        if (!showTrigger || /(^|\n)\s*--fs-trigger\s*:/.test(doc)) snippet = snippet.replace(/^--fs-trigger\s*:[^\n]*\n?/, "").trim()
-
+        const snippet = item.css.trim()
         const insert = (doc.trim() ? "\n\n" : "") + snippet
         const position = doc.length
 
@@ -167,17 +188,11 @@
         })
         view.focus()
         commit()
+        libraryOpen = false
     }
 
-    function presetChanged(event: Event) {
-        const select = event.currentTarget as HTMLSelectElement
-        const id = select.value
-        select.value = ""
-        if (id) insertPreset(id)
-    }
-
-    function toggleHelp() {
-        helpOpen = !helpOpen
+    function removeLibrary(id: string) {
+        deleteCSSLibraryItem(id)
     }
 
     onMount(() => {
@@ -196,7 +211,7 @@
                     EditorView.lineWrapping,
                     css(),
                     syntaxHighlighting(cssHighlight),
-                    placeholder("Pick an effect above, or start with & { ... }"),
+                    placeholder("& { ... }"),
                     autocompletion({ override: [completionSource] }),
                     keymap.of([{ key: "Mod-/", run: toggleComment }, { key: "Shift-Alt-ArrowDown", run: copyLineDown }, { key: "Alt-ArrowUp", run: moveLineUp }, { key: "Alt-ArrowDown", run: moveLineDown }, { key: "Mod-Shift-k", run: deleteLine }, ...closeBracketsKeymap, ...defaultKeymap, ...historyKeymap, ...completionKeymap, indentWithTab]),
                     tooltips({ parent: document.body }),
@@ -230,6 +245,7 @@
 
     onDestroy(() => {
         if (changeTimeout) clearTimeout(changeTimeout)
+        clearNoticeTimeout()
         const currentView = view
         view = null
         currentView?.destroy()
@@ -250,21 +266,11 @@
             {/if}
 
             <button class="toolButton" type="button" title="Replay animations" aria-label="Replay animations" on:click={replaySelectedEffects}>Replay</button>
-            <button class="toolButton helpButton" type="button" title="CSS help" aria-label="CSS help" aria-expanded={helpOpen} aria-controls="css-help" on:click={toggleHelp}>?</button>
         </div>
     </div>
 
     <div class="toolbar">
-        <select class="preset" title="Insert a ready-made effect" aria-label="Insert a ready-made effect" on:change={presetChanged}>
-            <option value="">Effects…</option>
-            {#each presetGroups as [group, presets]}
-                <optgroup label={group}>
-                    {#each presets as preset}
-                        <option value={preset.id} title={preset.description}>{preset.name}</option>
-                    {/each}
-                </optgroup>
-            {/each}
-        </select>
+        <button class="toolButton" type="button" title="Saved styles" aria-label="Saved styles" aria-expanded={libraryOpen} aria-controls="css-library" on:click={toggleLibrary}>My styles{libraryItems.length ? ` (${libraryItems.length})` : ""}</button>
 
         <span class="hint" title="&amp; is this element. Every other selector is scoped inside it, so it cannot style the rest of the app.">&amp; = this element</span>
     </div>
@@ -275,28 +281,32 @@
 
     <div class="editor" bind:this={host} />
 
-    {#if helpOpen}
-        <div id="css-help" class="help" role="dialog" aria-label="CSS help">
-            <button class="helpClose" type="button" aria-label="Close help" on:click={() => (helpOpen = false)}>×</button>
-            <h4>CSS quick help</h4>
-            <p><code>&amp;</code> is this element. <code>*</code>, <code>span</code> and <code>.class</code> only match inside it.</p>
-            <p>
-                <strong>Triggers</strong><br />
-                <code>mount</code> — once when created<br />
-                <code>slide</code> — every slide enter<br />
-                <code>click</code> — when Click reveal shows it<br />
-                Replay restarts the item's <code>&amp;</code> animation.
-            </p>
-            <p><strong>Strength</strong><br />Bare declarations are inline and beat <code>&amp; &#123; &#125;</code> rules. Add <code>!important</code> to a rule to win over the inspector.</p>
-            <p><strong>Variables</strong><br />Type <code>var(--</code> for FreeShow variables, e.g. <code>var(--variable-song_title)</code> or <code>var(--slide-group-color)</code>.</p>
-            <p>
-                <strong>Shortcuts</strong><br />
-                <code>Ctrl/Cmd+Space</code> — autocomplete<br />
-                <code>Ctrl/Cmd+/</code> — comment<br />
-                <code>Alt+↑/↓</code> — move line<br />
-                <code>Shift+Alt+↓</code> — duplicate line
-            </p>
-            <p class="helpTip">Pick an effect from <strong>Effects…</strong>, then change only <code>--fs-trigger</code> to decide when it plays.</p>
+    {#if libraryOpen}
+        <div id="css-library" class="library" role="dialog" aria-label="My styles">
+            <button class="helpClose" type="button" aria-label="Close saved styles" on:click={() => (libraryOpen = false)}>×</button>
+            <h4>My styles</h4>
+            <p class="libraryHint">Save this CSS once, then insert it into another {editorContext === "item" ? "item" : "text selection"}. Stored on this device.</p>
+
+            <div class="saveRow">
+                <input class="saveName" type="text" bind:value={saveName} placeholder="Style name" maxlength="60" aria-label="Style name" />
+                <button class="toolButton" type="button" on:click={saveCurrent} disabled={!value.trim()}>Save current</button>
+            </div>
+
+            {#if libraryNotice}<p class="libraryNotice">{libraryNotice}</p>{/if}
+
+            {#if libraryItems.length}
+                <ul class="libraryList">
+                    {#each libraryItems as item (item.id)}
+                        <li>
+                            <span class="libraryName" title={item.css}>{item.name}</span>
+                            <button class="toolButton" type="button" on:click={() => insertLibrary(item)}>Insert</button>
+                            <button class="libraryDelete" type="button" aria-label="Delete {item.name}" title="Delete" on:click={() => removeLibrary(item.id)}>×</button>
+                        </li>
+                    {/each}
+                </ul>
+            {:else}
+                <p class="libraryEmpty">Nothing saved yet. Name the CSS in this box and save it to reuse it anywhere.</p>
+            {/if}
         </div>
     {/if}
 </div>
@@ -380,36 +390,12 @@
         border-color: var(--secondary);
     }
 
-    .helpButton {
-        width: 20px;
-        padding: 0;
-        border-radius: 50%;
-        line-height: 18px;
-        text-align: center;
-    }
-
     .toolbar {
         display: flex;
         align-items: center;
         gap: 6px;
         min-width: 0;
         padding: 0 8px 4px;
-    }
-
-    .preset {
-        flex: 0 1 auto;
-        max-width: 124px;
-        min-width: 0;
-        padding: 1px 3px;
-
-        background-color: var(--primary-darker);
-        color: var(--text);
-        border: 1px solid var(--primary-lighter);
-        border-radius: 3px;
-
-        font: inherit;
-        font-size: 0.65rem;
-        cursor: pointer;
     }
 
     .hint {
@@ -451,46 +437,6 @@
         overflow: auto;
     }
 
-    .help {
-        position: absolute;
-        inset: 34px 0 0;
-        z-index: 5;
-        padding: 10px 12px 12px;
-        overflow-y: auto;
-
-        background: var(--primary-darkest);
-        border-top: 1px solid var(--primary-lighter);
-        color: var(--text);
-
-        font-size: 0.68rem;
-        font-weight: 400;
-        line-height: 1.45;
-    }
-
-    .help h4 {
-        margin: 0 0 8px;
-
-        color: var(--secondary);
-        font-size: 0.8rem;
-    }
-
-    .help p {
-        margin: 0 0 8px;
-        opacity: 0.8;
-    }
-
-    .help code {
-        padding: 0 3px;
-
-        background: rgb(255 255 255 / 0.08);
-        border-radius: 3px;
-        font-size: 0.92em;
-    }
-
-    .help .helpTip {
-        opacity: 0.55;
-    }
-
     .helpClose {
         position: absolute;
         top: 5px;
@@ -512,5 +458,115 @@
 
     .helpClose:hover {
         opacity: 1;
+    }
+
+    .library {
+        position: absolute;
+        inset: 34px 0 0;
+        z-index: 6;
+        padding: 10px 12px 12px;
+        overflow-y: auto;
+
+        background: var(--primary-darkest);
+        border-top: 1px solid var(--primary-lighter);
+        color: var(--text);
+
+        font-size: 0.68rem;
+        font-weight: 400;
+        line-height: 1.45;
+    }
+
+    .library h4 {
+        margin: 0 0 4px;
+
+        color: var(--secondary);
+        font-size: 0.8rem;
+    }
+
+    .libraryHint,
+    .libraryEmpty {
+        margin: 0 0 8px;
+        opacity: 0.5;
+    }
+
+    .saveRow {
+        display: flex;
+        gap: 6px;
+        margin-bottom: 8px;
+    }
+
+    .saveName {
+        flex: 1;
+        min-width: 0;
+        padding: 3px 6px;
+
+        background: var(--primary-darker);
+        color: var(--text);
+        border: 1px solid var(--primary-lighter);
+        border-radius: 3px;
+
+        font: inherit;
+    }
+
+    .saveName:focus {
+        outline: none;
+        border-color: var(--secondary);
+    }
+
+    .libraryNotice {
+        margin: 0 0 6px;
+        color: var(--secondary);
+    }
+
+    .libraryList {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        margin: 0;
+        padding: 0;
+
+        list-style: none;
+    }
+
+    .libraryList li {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 3px 0;
+
+        border-bottom: 1px solid rgb(255 255 255 / 0.06);
+    }
+
+    .libraryName {
+        flex: 1;
+        min-width: 0;
+        overflow: hidden;
+        white-space: nowrap;
+        text-overflow: ellipsis;
+    }
+
+    .libraryDelete {
+        width: 20px;
+        padding: 0;
+
+        background: transparent;
+        color: var(--text);
+        border: 1px solid transparent;
+        border-radius: 3px;
+
+        font: inherit;
+        line-height: 18px;
+        cursor: pointer;
+        opacity: 0.5;
+    }
+
+    .libraryDelete:hover {
+        color: var(--secondary);
+        opacity: 1;
+    }
+
+    .toolButton:disabled {
+        cursor: default;
+        opacity: 0.4;
     }
 </style>
