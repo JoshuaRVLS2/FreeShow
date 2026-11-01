@@ -4,6 +4,7 @@
     import T from "../helpers/T.svelte"
     import { findMatchingOut } from "../helpers/output"
     import { getShowCacheId } from "../helpers/show"
+    import { isTypingTarget } from "../../utils/shortcutsHelper"
     import SkeletonSlide from "../slide/SkeletonSlide.svelte"
     import Slide from "../slide/Slide.svelte"
     import Autoscroll from "../system/Autoscroll.svelte"
@@ -28,7 +29,7 @@
             altKeyPressed = true
         }
 
-        if (e.target instanceof HTMLTextAreaElement || e.target?.closest?.(".edit")) return
+        if (e.target instanceof HTMLTextAreaElement || e.target?.closest?.(".edit") || isTypingTarget(e.target as Element)) return
         if ($activeEdit.items.length) return
 
         if (e.key === "ArrowDown") {

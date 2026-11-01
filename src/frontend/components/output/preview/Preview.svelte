@@ -3,6 +3,7 @@
     import { DEFAULT_WIDTH, isDarkTheme } from "../../../utils/common"
     import { formatSearch } from "../../../utils/search"
     import { getNormalizedKey, previewCtrlShortcuts, previewShortcuts } from "../../../utils/shortcuts"
+    import { isTypingTarget } from "../../../utils/shortcutsHelper"
     import { runAction } from "../../actions/actions"
     import AudioMeter from "../../drawer/audio/AudioMeter.svelte"
     import { getSlideText } from "../../edit/scripts/textStyle"
@@ -49,7 +50,8 @@
         }
 
         const functionKey = /^F(?:[1-9]|1[0-9]|2[0-4])$/
-        if ((e.target?.closest?.("input") || e.target?.closest?.(".edit")) && !functionKey.test(e.key)) return
+        // leave all keys alone while typing in a field (the CSS editor is a contenteditable)
+        if ((e.target?.closest?.("input") || e.target?.closest?.(".edit") || isTypingTarget(e.target as Element)) && !functionKey.test(e.key)) return
 
         // start action with custom shortcut key
         // /^[A-Z]{1}$/i.test(e.key) &&

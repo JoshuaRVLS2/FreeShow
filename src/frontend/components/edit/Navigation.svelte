@@ -2,6 +2,7 @@
     import type { ClickEvent } from "../../../types/Main"
     import { activeEdit, activePage, activeShow, editHistory, editMode, effects, focusMode, labelsDisabled, overlays, refreshEditSlide, scenes, shows, templates } from "../../stores"
     import { getAccess } from "../../utils/profile"
+    import { isTypingTarget } from "../../utils/shortcutsHelper"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
     import { clone } from "../helpers/array"
@@ -96,7 +97,7 @@
     $: activeIndex = clonedHistory.findIndex((edited) => ($activeEdit.id ? $activeEdit.id === edited.id : currentShowId === edited.id))
     function handleKeyDown(e: KeyboardEvent) {
         if (e.ctrlKey || e.metaKey) return
-        if (e.target?.closest?.(".edit") || document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA") return
+        if (e.target?.closest?.(".edit") || document.activeElement?.tagName === "INPUT" || document.activeElement?.tagName === "TEXTAREA" || isTypingTarget(document.activeElement)) return
 
         const showRecent = !($focusMode && currentShowId) && ($activeEdit.id || ((!currentShowId || !$shows[currentShowId]) && $editHistory.length) || $editMode === "text_edit")
         if (!showRecent || clonedHistory.length === 0) return

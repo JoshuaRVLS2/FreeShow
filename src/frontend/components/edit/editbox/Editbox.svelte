@@ -5,6 +5,7 @@
     import { translateText } from "../../../utils/language"
     import { getAccess } from "../../../utils/profile"
     import { isComposing } from "../../../utils/shortcuts"
+    import { isTypingTarget } from "../../../utils/shortcutsHelper"
     import { deleteAction } from "../../helpers/clipboard"
     import { isCroppedItem } from "../../helpers/cropping"
     import { history } from "../../helpers/history"
@@ -12,7 +13,9 @@
     import { getFirstActiveOutput, getOutputResolution, percentageStylePos } from "../../helpers/output"
     import { isSlideLocked } from "../../helpers/show"
     import { createCSSVariables } from "../../helpers/showActions"
-    import { getItemStyle, getStyles } from "../../helpers/style"
+    import { getItemScope, getItemStyle, getStyles, scopeCustomCSS } from "../../helpers/style"
+    import { effectReplay } from "../../helpers/effects"
+    import ItemCSS from "../../helpers/ItemCSS.svelte"
     import { getShapeGuideStyle } from "../scripts/shapeOutside"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import SlideItems from "../../slide/SlideItems.svelte"
@@ -55,18 +58,37 @@
         const isSelected = $activeEdit.items.includes(index)
 
         if (rightClick) {
-            if (!isSelected) activeEdit.update((ae) => { ae.items = [index]; return ae })
+            if (!isSelected)
+                activeEdit.update((ae) => {
+                    ae.items = [index]
+                    return ae
+                })
         } else if (e.shiftKey) {
-            if (!isSelected) activeEdit.update((ae) => { ae.items.push(index); return ae })
+            if (!isSelected)
+                activeEdit.update((ae) => {
+                    ae.items.push(index)
+                    return ae
+                })
         } else if (!isSelected) {
-            activeEdit.update((ae) => { ae.items = [index]; return ae })
+            activeEdit.update((ae) => {
+                ae.items = [index]
+                return ae
+            })
         } else if ($activeEdit.items.length > 1) {
-            const startX = e.clientX, startY = e.clientY
-            window.addEventListener("mouseup", (upEvent) => {
-                if (Math.hypot(upEvent.clientX - startX, upEvent.clientY - startY) < 4) {
-                    activeEdit.update((ae) => { ae.items = [index]; return ae })
-                }
-            }, { once: true })
+            const startX = e.clientX,
+                startY = e.clientY
+            window.addEventListener(
+                "mouseup",
+                (upEvent) => {
+                    if (Math.hypot(upEvent.clientX - startX, upEvent.clientY - startY) < 4) {
+                        activeEdit.update((ae) => {
+                            ae.items = [index]
+                            return ae
+                        })
+                    }
+                },
+                { once: true }
+            )
         }
 
         // deselect selected text
@@ -134,7 +156,9 @@
             }
         }
 
-        if (!$activeEdit.items.includes(index) || document.activeElement?.closest(".item") || document.activeElement?.closest("input")) return
+        const activeElem = document.activeElement
+        // ignore typing fields (e.g. the CSS editor's contenteditable)
+        if (!$activeEdit.items.includes(index) || activeElem?.closest(".item") || activeElem?.closest("input") || isTypingTarget(activeElem)) return
         // selected timeline actions
         if (document.querySelector(".timeline-track .action-marker.selected")) return
 
@@ -220,6 +244,9 @@
     // give CSS access to certain dynamic values
     $: cssVariables = createCSSVariables($variables)
 
+    $: itemCSS = scopeCustomCSS(item?.style, getItemScope(ref, index, item))
+    $: effectTrigger = getStyles(item?.style)["--fs-trigger"] || "mount"
+
     const isOptimized = $special.optimizedMode
     let previewCropType: "clip" | "ppt" = "clip"
     $: previewCropType = item?.cropping?.type === "ppt" ? "ppt" : "clip"
@@ -247,16 +274,19 @@
     class:isOptimized
     class:showOverflow={item?.type === "table" || cropActive}
     class:isShiftPressed
-    style="{plain ? 'width: 100%;' : `${getCustomStyle(getItemStyle(item?.style, isCroppedItem(item)), customOutputId)}; outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);z-index: ${index + 1 + ($activeEdit.items.includes(index) ? 100 : 0)};${filter ? 'filter: ' + filter + ';' : ''}${backdropFilter ? 'backdrop-filter: ' + backdropFilter + ';' : ''}`}{cssVariables}{fixedWidth}"
+    data-fs-scope={itemCSS.scope}
+    use:effectReplay={{ trigger: effectTrigger, slideKey: ref?.showId || ref?.id }}
+    style="{plain ? 'width: 100%;' : `${getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId)}; outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);z-index: ${index + 1 + ($activeEdit.items.includes(index) ? 100 : 0)};${filter ? 'filter: ' + filter + ';' : ''}${backdropFilter ? 'backdrop-filter: ' + backdropFilter + ';' : ''}`}{cssVariables}{fixedWidth}"
     data-index={index}
     on:mousedown={mousedown}
     on:dblclick={dblclick}
 >
+    <ItemCSS css={item?.style} scope={itemCSS.scope} prefix={itemCSS.prefix} />
     {#if !plain}
         <EditboxPlain {item} {index} {ratio} hideMovebox={cropActive} />
     {/if}
     {#if item?.lines && !noTextMode}
-        <EditboxLines {item} {ref} {index} {editIndex} {plain} {chordsMode} {chordsAction} {isLocked} />
+        <EditboxLines {item} {ref} {index} {editIndex} {plain} {chordsMode} {chordsAction} {isLocked} scope={itemCSS.scope} />
     {:else if previewItem}
         {#if previewItem.type === "media" || previewItem.type === "camera"}
             <div class="mediaFrame" class:showOverflow={cropActive}>

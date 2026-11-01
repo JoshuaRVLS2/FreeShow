@@ -5,6 +5,7 @@
     import { activePopup, activeStage, activeTimers, allOutputs, currentWindow, dictionary, media, outputs, outputSlideCache, refreshEditSlide, stageShows, timers, variables } from "../../stores"
     import { startResizing } from "../../utils/cursor"
     import { translateText } from "../../utils/language"
+    import { isTypingTarget } from "../../utils/shortcutsHelper"
     import { sendBackgroundToStage } from "../../utils/stageTalk"
     import { videoExtensions } from "../../values/extensions"
     import EditboxLines from "../edit/editbox/EditboxLines.svelte"
@@ -15,7 +16,8 @@
     import { getExtension, loadThumbnail, mediaSize } from "../helpers/media"
     import { getActiveOutputs, getStageResolution, percentageStylePos } from "../helpers/output"
     import { createCSSVariables, replaceDynamicValues } from "../helpers/showActions"
-    import { getStyles } from "../helpers/style"
+    import { getItemScope, getKeyframeNames, getStyles, scopeAnimationNames, scopeCustomCSS } from "../helpers/style"
+    import ItemCSS from "../helpers/ItemCSS.svelte"
     import Button from "../inputs/Button.svelte"
     import Media from "../output/layers/Media.svelte"
     import Output from "../output/Output.svelte"
@@ -123,7 +125,8 @@
         if (!edit) return
         if (e.key === "Shift") isShiftPressed = true
 
-        if ((e.key === "Backspace" || e.key === "Delete") && $activeStage.items.includes(id) && !document.activeElement?.closest(".stage_item") && !document.activeElement?.closest(".edit")) {
+        const activeElem = document.activeElement
+        if ((e.key === "Backspace" || e.key === "Delete") && $activeStage.items.includes(id) && !activeElem?.closest(".stage_item") && !activeElem?.closest(".edit") && !isTypingTarget(activeElem)) {
             // selected timeline actions
             if (document.querySelector(".timeline-track .action-marker.selected")) return
 
@@ -269,6 +272,7 @@
 
     let itemStyle = ""
     let textStyle = ""
+    $: itemCSS = scopeCustomCSS(item?.style, getItemScope({ id }, 0, item))
     $: if (item?.style || isAutoSized !== undefined) updateStyles()
     function updateStyles() {
         const styles = getStyles(item?.style)
@@ -287,6 +291,13 @@
                 // Otherwise 800px gets inherited and causes giant text flash
             } else itemStyle += `${key}: ${value};`
         })
+
+        const keyframeNames = getKeyframeNames(item?.style)
+        if (keyframeNames.length) {
+            const prefix = scopeCustomCSS(item?.style, getItemScope({ id }, 0, item)).prefix
+            itemStyle = scopeAnimationNames(itemStyle, keyframeNames, prefix)
+            textStyle = scopeAnimationNames(textStyle, keyframeNames, prefix)
+        }
     }
 
     $: stageResolution = resolution || getStageResolution(stageOutputId, outputStores)
@@ -378,9 +389,11 @@
     class:isDisabledVariable
     class:isOutput={!!$currentWindow}
     class:isShiftPressed
+    data-fs-scope={itemCSS.scope}
     style="{customStyle}{id.includes('slide') && !id.includes('tracker') ? '' : textStyle}{edit ? `outline: ${3 / ratio}px solid rgb(255 255 255 / 0.2);` : ''}--labelColor: {currentShow?.settings?.labelColor || '#d0a853'};{fixedWidth}{cssVariables}"
     on:mousedown={mousedown}
 >
+    <ItemCSS css={item?.style} scope={itemCSS.scope} prefix={itemCSS.prefix} />
     {#if currentShow?.settings?.labels && id && item}
         <div class="label">{getCustomStageLabel(item.type || id, item, $dictionary)}</div>
     {/if}
@@ -460,7 +473,7 @@
                     {#if edit}
                         {#key $refreshEditSlide}
                             <span class="edit_item" style="pointer-events: initial;--font-size: {fontSize}px;">
-                                <EditboxLines item={stageItemToItem(item)} ref={{ type: "stage", id }} index={-1} />
+                                <EditboxLines item={stageItemToItem(item)} ref={{ type: "stage", id }} index={-1} scope={itemCSS.scope} />
                             </span>
                         {/key}
                     {:else}

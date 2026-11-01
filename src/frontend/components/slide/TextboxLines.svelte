@@ -8,11 +8,13 @@
     import { clone } from "../helpers/array"
     import { getFirstActiveOutput } from "../helpers/output"
     import { replaceDynamicValues } from "../helpers/showActions"
-    import { getStyles } from "../helpers/style"
+    import { getCSSScope, getInlineStyle, getStyles, scopeInlineStyle } from "../helpers/style"
+    import ItemCSS from "../helpers/ItemCSS.svelte"
     import { calculateShapeVerticalOffset, getShapeFloatSide } from "../edit/scripts/shapeOutside"
     import { applyStyleOverrides } from "./wordOverride"
 
     export let item: Item
+    export let scope = ""
     export let slideIndex = 0
     export let key = false
     export let smallFontSize = false
@@ -49,6 +51,8 @@
     export let updateDynamicValues = true
 
     $: lines = createVirtualBreaks(clone(item?.lines || []), outputStyle?.skipVirtualBreaks)
+    $: baseScope = scope || getCSSScope(item?.style)
+    $: cssPrefix = `${baseScope}-`
     $: if (linesStart !== null && linesEnd !== null && lines.length) {
         lines = lines.filter((a) => Array.isArray(a.text) && a.text.filter((a) => a.value !== undefined)?.length)
 
@@ -75,6 +79,8 @@
     }
 
     function getCustomStyle(style: string) {
+        if (!style) return ""
+        style = getInlineStyle(style)
         if (!style) return ""
 
         // text gradient
@@ -384,6 +390,7 @@
                             {@const chordOnly = chords && chordOnlyLines[i]}
                             {@const height = chords && chordLines[i] && !chordOnly && i < renderedLines.length - 1 && !line.text?.reduce((value, t) => (value += t.value || ""), "")?.trim()?.length ? 80 : 0}
                             {@const lineHidden = (linesStart !== null && linesEnd !== null && (i < linesStart || i >= linesEnd)) || (maxLines && (maxLinesInvert ? i <= lines.length - maxLines - 1 : i >= maxLines))}
+                            {@const lineScope = `${baseScope}-l${i}`}
 
                             {#if !lineHidden || outputStyle?.showAsFaded}
                                 {#if chords && chordLines[i]}
@@ -399,8 +406,11 @@
                                         class:normalWrap={normalWrap || (isStage ? typeof stageItem?.style === "string" && (stageItem?.style.includes("justify") || stageItem?.style.includes("nowrap")) : line.align?.includes("justify") || line.align?.includes("left") || JSON.stringify(line).includes("nowrap"))}
                                         class:reveal={(centerPreview || isStage) && item?.lineReveal && revealed < i}
                                         class:smallFontSize={smallFontSize || customFontSize || textAnimation.includes("font-size")}
-                                        style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
+                                        data-fs-scope={line.align?.includes("{") ? lineScope : undefined}
+                                        style="position: relative;{style ? lineStyle : ''}{style ? scopeInlineStyle(line.align, cssPrefix) : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
                                     >
+                                        <ItemCSS css={line.align} scope={lineScope} prefix={cssPrefix} />
+
                                         <!-- style Lines selection in center preview -->
                                         {#each highlighedLines || [] as box}
                                             {#if i >= box.from && i < box.to}
@@ -415,9 +425,13 @@
                                                 {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}
                                                 {@const fontRatio = text.customType?.includes("disableTemplate") && !text.customType?.includes("jw") ? customTypeRatio : 1}
                                                 {@const segmentFontSize = fontSize ? fontSize * fontRatio : style ? resolveFontSize(text.baseStyle || text.style, outputStyle) : 100}
+                                                {@const textScope = `${baseScope}-s${i}-${ti}`}
 
                                                 <!-- NOTE: must be on the same line for rendering ...>{@html -->
-                                                <span class="textContainer" style="{style ? getCustomStyle(text.style) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? text.style : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;">{@html getTextValue(value, i, ti, updateDynamic)}</span>
+                                                <ItemCSS css={text.style} scope={textScope} prefix={cssPrefix} />
+                                                <span class="textContainer" data-fs-scope={text.style?.includes("{") ? textScope : undefined} style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;"
+                                                    >{@html getTextValue(value, i, ti, updateDynamic)}</span
+                                                >
                                             {/each}
                                         {/if}
                                     </div>
@@ -440,6 +454,7 @@
                 {@const chordOnly = chords && chordOnlyLines[i]}
                 {@const height = chords && chordLines[i] && !chordOnly && i < renderedLines.length - 1 && !line.text?.reduce((value, t) => (value += t.value || ""), "")?.trim()?.length ? 80 : 0}
                 {@const lineHidden = (linesStart !== null && linesEnd !== null && (i < linesStart || i >= linesEnd)) || (maxLines && (maxLinesInvert ? i <= lines.length - maxLines - 1 : i >= maxLines))}
+                {@const lineScope = `${baseScope}-l${i}`}
 
                 {#if !lineHidden || outputStyle?.showAsFaded}
                     {#if chords && chordLines[i]}
@@ -455,8 +470,11 @@
                             class:normalWrap={normalWrap || (isStage ? typeof stageItem?.style === "string" && (stageItem?.style.includes("justify") || stageItem?.style.includes("nowrap")) : line.align?.includes("justify") || line.align?.includes("left") || JSON.stringify(line).includes("nowrap"))}
                             class:reveal={(centerPreview || isStage) && item?.lineReveal && revealed < i}
                             class:smallFontSize={smallFontSize || customFontSize || textAnimation.includes("font-size")}
-                            style="position: relative;{style ? lineStyle : ''}{style ? line.align : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
+                            data-fs-scope={line.align?.includes("{") ? lineScope : undefined}
+                            style="position: relative;{style ? lineStyle : ''}{style ? scopeInlineStyle(line.align, cssPrefix) : ''}{height ? `height: ${height}px;` : ''}{item?.list?.enabled && line.text?.reduce((value, t) => (value += t.value || ''), '')?.length ? listStyle : ''}{item?.list?.enabled ? `color: ${getStyles(line.text?.[0]?.style).color || ''};` : ''}{lineHidden && outputStyle?.showAsFaded ? `opacity: ${(outputStyle.lineOpacity ?? 50) / 100};` : ''}"
                         >
+                            <ItemCSS css={line.align} scope={lineScope} prefix={cssPrefix} />
+
                             <!-- style Lines selection in center preview -->
                             {#each highlighedLines || [] as box}
                                 {#if i >= box.from && i < box.to}
@@ -471,9 +489,13 @@
                                     {@const value = text.value?.replaceAll("\n", "<br>") || "<br>"}
                                     {@const fontRatio = text.customType?.includes("disableTemplate") && !text.customType?.includes("jw") ? customTypeRatio : 1}
                                     {@const segmentFontSize = fontSize ? fontSize * fontRatio : style ? resolveFontSize(text.baseStyle || text.style, outputStyle) : 100}
+                                    {@const textScope = `${baseScope}-s${i}-${ti}`}
 
                                     <!-- NOTE: must be on the same line for rendering ...>{@html -->
-                                    <span class="textContainer" style="{style ? getCustomStyle(text.style) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? text.style : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;">{@html getTextValue(value, i, ti, updateDynamic)}</span>
+                                    <ItemCSS css={text.style} scope={textScope} prefix={cssPrefix} />
+                                    <span class="textContainer" data-fs-scope={text.style?.includes("{") ? textScope : undefined} style="{style ? getCustomStyle(scopeInlineStyle(text.style, cssPrefix)) : ''}{getColor(text.style)}{customStyle}{text.customType?.includes('disableTemplate') ? scopeInlineStyle(text.style, cssPrefix) : ''}{fontSize ? `;font-size: ${fontSize * fontRatio}px;` : style ? getCustomFontSize(text.style, outputStyle) : ''};--base-font-size: {segmentFontSize}px;"
+                                        >{@html getTextValue(value, i, ti, updateDynamic)}</span
+                                    >
                                 {/each}
                             {/if}
                         </div>

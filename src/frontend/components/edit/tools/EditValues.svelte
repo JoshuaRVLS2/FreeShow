@@ -8,9 +8,10 @@
     import { getSortedTimers } from "../../drawer/timers/timers"
     import { clone, keysToID, sortByName } from "../../helpers/array"
     import Icon from "../../helpers/Icon.svelte"
-    import { getFilters, getStyles } from "../../helpers/style"
+    import { getCSSConflicts, getFilters, getStyles } from "../../helpers/style"
     import Input from "../../input/Input.svelte"
     import InputRow from "../../input/InputRow.svelte"
+    import CssEditor from "../../inputs/CssEditor.svelte"
     import MaterialButton from "../../inputs/MaterialButton.svelte"
     import MaterialFilePicker from "../../inputs/MaterialFilePicker.svelte"
     import MaterialFontDropdown from "../../inputs/MaterialFontDropdown.svelte"
@@ -32,6 +33,20 @@
     export let item: any = {}
     export let isStage = false
     export let type: string = ""
+
+    $: cssConflicts = getCSSConflicts(item?.style || "")
+
+    // the inspector and the CSS box can write the same property, point out where they overlap
+    function getCSSConflict(input: EditInput) {
+        if (input.id.includes("CSS")) return ""
+
+        const property = input.key || (input.id.includes("-") ? input.id : "")
+        if (!property) return ""
+
+        if (cssConflicts.forced.includes(property)) return "forced"
+        if (cssConflicts.rules.includes(property)) return "rule"
+        return ""
+    }
 
     function getValue(input: EditInput, _updater: any = null) {
         if (!item) return ""
@@ -94,6 +109,9 @@
         const currentStyle = isItem ? item?.style : input.values?.value
         style = (item.type || "text") === "text" && !isStage ? currentStyle : filterItemStyle(currentStyle, isItem)
         if (!style) return ""
+
+        // full CSS with @keyframes and other blocks is shown exactly as authored
+        if (style.includes("{")) return style.trim()
 
         // sort alphabetically
         let split = style.split(";").filter((a) => a)
@@ -204,7 +222,8 @@
         }
 
         if (input.id.includes("CSS")) {
-            value = value.replaceAll("\n", "")
+            // keep full CSS readable, plain declarations stay on a single line
+            if (!value.includes("{")) value = value.replaceAll("\n", "")
             value = (item.type || "text") === "text" && !isStage ? value : mergeWithStyle(value, item.style, input.id === "CSS_item")
         }
 
@@ -382,6 +401,11 @@
                                 {@const value = getValue(input, { styles, item, customValues })}
                                 {@const values = getValues(input)}
                                 {@const hasTimelineAction = $special.slideTimelineActive && $activePage === "edit" && ($activeEdit.type || "show") === "show" && SlideTimeline.hasActionAtTime(input.key || "", type, $activeEdit?.items?.length ? $activeEdit.items : [0], timelineUpdater)}
+                                {@const cssConflict = getCSSConflict(input)}
+
+                                {#if cssConflict}
+                                    <span class="cssBadge" class:forced={cssConflict === "forced"} title={cssConflict === "forced" ? "Overridden by !important in custom CSS" : "Also set in a custom CSS rule"}>CSS</span>
+                                {/if}
 
                                 {#if input.type === "fontDropdown"}
                                     <MaterialFontDropdown label={values.label} {value} style={values.style} fontStyleValue={input.styleValue} {customLocalFonts} on:change={(e) => changed(e, input)} on:fontStyle={(e) => changed(e, { ...input, key: "font" })} enableFontStyles />
@@ -396,7 +420,11 @@
                                         <div class="highlight radio" class:active={value === input.value}></div>
                                     </MaterialButton>
                                 {:else if input.type === "textarea"}
-                                    <MaterialTextarea label={values.label} {value} on:change={(e) => changed(e, input, id)} />
+                                    {#if input.id.includes("CSS")}
+                                        <CssEditor label={values.label} {value} showTrigger={input.id === "CSS_item"} on:change={(e) => changed(e, input, id)} />
+                                    {:else}
+                                        <MaterialTextarea label={values.label} {value} on:change={(e) => changed(e, input, id)} />
+                                    {/if}
                                 {:else if input.type === "media"}
                                     <MaterialFilePicker label={(value ? values.label : "") || "edit.choose_media"} {value} filter={{ name: "Media files", extensions: mediaExtensions }} on:change={(e) => changed(e, input, id)} autoTrigger={$activeEdit.type !== "template"} allowEmpty />
                                 {:else if input.type === "popup"}
@@ -521,5 +549,28 @@
     }
     .tip :global(a):active {
         opacity: 0.9;
+    }
+    .cssBadge {
+        align-self: center;
+        flex-shrink: 0;
+
+        padding: 1px 4px;
+
+        color: var(--text);
+        opacity: 0.45;
+        border: 1px solid currentColor;
+        border-radius: 3px;
+
+        font-size: 0.55rem;
+        font-weight: 700;
+        letter-spacing: 0.04em;
+        line-height: 1.4;
+        cursor: help;
+        user-select: none;
+    }
+
+    .cssBadge.forced {
+        color: var(--red, #ff6b6b);
+        opacity: 1;
     }
 </style>

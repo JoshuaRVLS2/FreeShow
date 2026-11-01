@@ -12,7 +12,9 @@
     import { getActiveOutputs, getAllActiveOutputs, getFirstActiveOutput, getOutputLines, getOutputResolution, percentageStylePos } from "../helpers/output"
     import { createCSSVariables } from "../helpers/showActions"
     import { isCroppedItem } from "../helpers/cropping"
-    import { getStyles, getItemStyle } from "../helpers/style"
+    import { effectReplay } from "../helpers/effects"
+    import { getStyles, getItemStyle, getItemScope, scopeCustomCSS } from "../helpers/style"
+    import ItemCSS from "../helpers/ItemCSS.svelte"
     import SlideItemTransition from "../output/transitions/SlideItemTransition.svelte"
     import SlideItems from "./SlideItems.svelte"
     import TextboxLines from "./TextboxLines.svelte"
@@ -73,6 +75,9 @@
     const dispatch = createEventDispatcher<{
         autosizeReady: { key: string; fontSize: number }
     }>()
+
+    $: itemCSS = scopeCustomCSS(item?.style, getItemScope(ref, itemIndex, item))
+    $: effectTrigger = getStyles(item?.style)["--fs-trigger"] || "mount"
 
     $: lines = clone(item?.lines)
     $: if (linesStart !== null && linesEnd !== null && lines?.length) {
@@ -517,7 +522,6 @@
             const verseItemText = allText.filter((a) => a.customType?.includes("disableTemplate")) || []
             const verseItemSize = Number(getStyles(verseItemText[0]?.style, true)?.["font-size"] || "") || 0
             customTypeRatio = verseItemSize / 100 || 1
-
             ;({ defaultFontSize, maxFontSize } = getAutoSizeOptions(textFit, itemFontSize, isTextboxItem))
         }
 
@@ -813,7 +817,7 @@
 <!-- lyrics view must have "width: 100%;height: 100%;" set -->
 <div
     class="item"
-    style="{style ? getCustomStyle(getItemStyle(item?.style, isCroppedItem(item)), customOutputId, styleIdOverride, { $styles }) : 'width: 100%;height: 100%;'};{paddingCorrection}{foregroundFilters}{animationStyle.item || ''}{cssVariables}{fixedWidth}"
+    style="{style ? getCustomStyle(getItemStyle(item?.style, isCroppedItem(item), itemCSS.prefix), customOutputId, styleIdOverride, { $styles }) : 'width: 100%;height: 100%;'};{paddingCorrection}{foregroundFilters}{animationStyle.item || ''}{cssVariables}{fixedWidth}"
     class:white={key && !lines?.length}
     class:key
     class:isStage
@@ -824,10 +828,13 @@
     class:clickable={$currentWindow === "output" && (item?.button?.press || item?.button?.release)}
     class:reveal={(centerPreview || isStage) && item?.clickReveal && !clickRevealed}
     class:hidden
+    data-fs-scope={itemCSS.scope}
+    use:effectReplay={{ trigger: effectTrigger, slideKey: ref?.slideId || ref?.id, clickRevealed }}
     bind:this={itemElem}
     on:mousedown={press}
     on:mouseup={release}
 >
+    <ItemCSS css={item?.style} scope={itemCSS.scope} prefix={itemCSS.prefix} />
     {#if lines && !noTextMode}
         {#if textTransition}
             <div class="textTransitionContainer">
@@ -836,6 +843,7 @@
                         <SlideItemTransition {preview} transitionEnabled={textTransition.transitionEnabled} transitioningBetween={textTransition.transitioningBetween} isClearing={textTransition.isClearing} incomingNeedsAutoSize={textTransition.incomingNeedsAutoSize} globalTransition={textTransition.globalTransition} item={{ ...item, autoFontSize: hasAutoSize ? fontSize || item?.autoFontSize : 0 }} lines={textTransition.lines} let:customItem let:customLines>
                             <TextboxLines
                                 item={customItem}
+                                scope={itemCSS.scope}
                                 {slideIndex}
                                 {key}
                                 {smallFontSize}
@@ -872,6 +880,7 @@
         {:else}
             <TextboxLines
                 {item}
+                scope={itemCSS.scope}
                 {slideIndex}
                 {key}
                 {smallFontSize}

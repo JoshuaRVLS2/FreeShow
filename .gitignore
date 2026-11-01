@@ -22,3 +22,7 @@ test-results/
 *.ipr
 *.iws
 .serena
+
+# local app data
+/Config/
+/Shows/

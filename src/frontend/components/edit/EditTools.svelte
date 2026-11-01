@@ -3,6 +3,7 @@
     import type { TabsObj } from "../../../types/Tabs"
     import { activeEdit, activeShow, copyPasteEdit, overlays, selected, showsCache, storedEditMenuState, templates } from "../../stores"
     import { getAccess } from "../../utils/profile"
+    import { isTypingTarget } from "../../utils/shortcutsHelper"
     import Icon from "../helpers/Icon.svelte"
     import T from "../helpers/T.svelte"
     import { clone } from "../helpers/array"
@@ -312,7 +313,7 @@
     }
 
     function keydown(e: KeyboardEvent) {
-        if (document.activeElement?.closest(".edit")) return
+        if (document.activeElement?.closest(".edit") || isTypingTarget(document.activeElement)) return
 
         // move items with arrow keys
         if (e.key.includes("Arrow") && $activeEdit.items.length) {

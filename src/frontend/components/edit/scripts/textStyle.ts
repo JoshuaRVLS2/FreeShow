@@ -1,5 +1,6 @@
 import type { Item, Line, Slide } from "../../../../types/Show"
 import { replaceVirtualBreaks } from "../../../show/slides"
+import { splitCustomCSS } from "../../helpers/style"
 
 // add new style to text by selection
 export function addStyle(selection: { start: number; end: number }[], item: Item, style: string | any[]): Item {
@@ -78,10 +79,12 @@ function combine(item: Item): Item {
 
 // add new style to string and remove old
 export function addStyleString(oldStyle: string, style: any[]): string {
-    if (!oldStyle) return style[1] !== null ? style.join(":") + ";" : ""
     if (typeof oldStyle !== "string") return ""
 
-    let array: string[] = oldStyle.split(";")
+    // keep @keyframes and other blocks separate from the declarations
+    const { inline, blocks } = splitCustomCSS(oldStyle)
+
+    let array: string[] = inline.split(";")
     // remove last if empty
     if (!array[array.length - 1].length) array.pop()
     // remove old styles using filter to avoid index issues
@@ -105,7 +108,8 @@ export function addStyleString(oldStyle: string, style: any[]): string {
     } else if (style[1] !== null) array.push(style.join(":"))
 
     let newStyle: string = array.join(";")
-    if (newStyle.slice(-1) !== ";") newStyle += ";"
+    if (newStyle && newStyle.slice(-1) !== ";") newStyle += ";"
+    if (blocks.length) newStyle += (newStyle ? "\n" : "") + blocks.join("\n")
     return newStyle
 }
 

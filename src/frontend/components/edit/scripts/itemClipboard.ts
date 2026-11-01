@@ -6,7 +6,7 @@ import { clone } from "../../helpers/array"
 import { history } from "../../helpers/history"
 import { getLayoutRef, isSlideLocked } from "../../helpers/show"
 import { _show } from "../../helpers/shows"
-import { getStyles } from "../../helpers/style"
+import { getStyles, splitCustomCSS } from "../../helpers/style"
 import { itemBoxes } from "../values/boxes"
 import { itemSections } from "../values/item"
 
@@ -49,9 +49,9 @@ export function getItemStyle(item: Item): StyleClipboard {
     const itemKeys = getItemKeys()
     const newStyles = getStyles(style)
 
-    // only keep item keys
+    // only keep item keys, but always keep custom properties (e.g. --fs-trigger)
     Object.keys(newStyles).forEach((key) => {
-        if (!itemKeys.includes(key)) delete newStyles[key]
+        if (!key.startsWith("--") && !itemKeys.includes(key)) delete newStyles[key]
     })
 
     return clone({ keys: {}, style: newStyles })
@@ -61,20 +61,32 @@ export function getItemStyle(item: Item): StyleClipboard {
 export function filterItemStyle(style: string, isItem: boolean) {
     if (typeof style !== "string" || !style) return ""
 
+    const { inline, blocks } = splitCustomCSS(style)
     const itemKeys = getItemKeys()
-    const styles = getStyles(style)
+    const styles = getStyles(inline)
 
-    // only keep item keys
+    // only keep item keys, but always keep custom properties (e.g. --fs-trigger)
     let newStyle = ""
     Object.entries(styles).forEach(([key, value]) => {
+        if (key.startsWith("--")) {
+            newStyle += `${key}: ${value};`
+            return
+        }
+
         const hasItemKey = itemKeys.includes(key)
         if (isItem ? hasItemKey : !hasItemKey) newStyle += `${key}: ${value};`
     })
 
+    // keep @keyframes and other blocks
+    if (blocks.length) newStyle += (newStyle ? "\n" : "") + blocks.join("\n")
     return newStyle
 }
 export function mergeWithStyle(newStyle: string, oldStyle: string, isItem: boolean) {
-    return filterItemStyle(oldStyle, !isItem) + newStyle
+    const old = splitCustomCSS(oldStyle)
+    const next = splitCustomCSS(newStyle)
+    const inline = filterItemStyle(old.inline, !isItem) + next.inline
+    const blocks = [...new Set([...old.blocks, ...next.blocks])]
+    return inline + (blocks.length ? (inline ? "\n" : "") + blocks.join("\n") : "")
 }
 
 export function getSlideStyle(): StyleClipboard {

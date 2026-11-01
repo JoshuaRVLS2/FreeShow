@@ -1,5 +1,6 @@
 import type { Item, Line } from "../../../../types/Show"
 import { clone } from "../../helpers/array"
+import { scopeInlineStyle } from "../../helpers/style"
 import { getItemText } from "../scripts/textStyle"
 
 export class EditboxHelper {
@@ -171,8 +172,9 @@ export class EditboxHelper {
         return { firstLines, secondLines }
     }
 
-    static getStyleHtml(item: Item, plain: boolean, currentStyle: string, useNormalWrap: boolean = false) {
+    static getStyleHtml(item: Item, plain: boolean, currentStyle: string, useNormalWrap: boolean = false, scope = "") {
         currentStyle = ""
+        const prefix = scope ? `${scope}-` : ""
         let html = ""
         let firstTextStyleArchive = ""
         const lineStyleBg = item.specialStyle?.lineBg ? `background: ${item.specialStyle.lineBg};` : ""
@@ -185,12 +187,14 @@ export class EditboxHelper {
         lines.forEach((line, i) => {
             const align = (typeof line.align === "string" ? line.align : "").replaceAll(lineStyleBg, "").replaceAll(lineStyleRadius, "") + ";"
             currentStyle += align + lineStyleBg + lineStyleRadius // + line.chords?.map((a) => a.key)
-            const style = align || lineStyleBg || lineStyleRadius || listStyle ? 'style="' + align + lineStyleBg + lineStyleRadius + listStyle + '"' : ""
+            const scopedAlign = scopeInlineStyle(align, prefix)
+            const style = scopedAlign || lineStyleBg || lineStyleRadius || listStyle ? 'style="' + scopedAlign + lineStyleBg + lineStyleRadius + listStyle + '"' : ""
+            const lineScope = scope && align.includes("{") ? ` data-fs-scope="${scope}-l${i}"` : ""
 
             const normalWrap = useNormalWrap || align.includes("justify") || align.includes("left") || JSON.stringify(line).includes("nowrap")
 
             // plain mode has no style attributes, identity attributes map styles back to the source lines (they are cloned when the browser splits a line)
-            html += `<div class="break ${normalWrap ? "normalWrap" : ""}" ${plain ? `data-line-index="${i}"` : style}>`
+            html += `<div class="break ${normalWrap ? "normalWrap" : ""}" ${plain ? `data-line-index="${i}"` : style}${lineScope}>`
 
             // fix removing all text in a line
             if (i === 0 && line.text?.[0]?.style) firstTextStyleArchive = line.text?.[0]?.style || ""
@@ -209,12 +213,15 @@ export class EditboxHelper {
                 const textChords = currentChords.filter((chord) => chord.pos >= textIndex && (chord.pos < textEnd || isLastSegment))
                 textIndex = textEnd
 
-                const textStyle = a.style || listStyle ? 'style="' + this.getCustomTextStyle(a.style) + listStyle + '"' : ""
+                // @keyframes and other blocks are injected separately, they can't live in the inline style
+                const inlineTextStyle = scopeInlineStyle(a.style, prefix)
+                const textStyle = inlineTextStyle || listStyle ? 'style="' + this.getCustomTextStyle(inlineTextStyle) + listStyle + '"' : ""
+                const textScope = scope && a.style?.includes("{") ? ` data-fs-scope="${scope}-s${i}-${tIndex}"` : ""
                 let value = a.value?.replaceAll("\n", "<br>") || "<br>"
                 // if (value === " ") value = "&nbsp;"
 
                 // this will "hide" any HTML tags if any in the actual text content (not chords or text editor)
-                html += `<span data-freeshow-text="true" class="${a.customType && !a.customType.includes("jw") ? "custom" : ""}" ${plain ? `data-text-index="${tIndex}"` : textStyle} data-customtype='${a.customType || ""}' data-sourcedynamickey='${a.sourceDynamicKey || ""}' data-chords='${JSON.stringify(textChords)}'>` + value + "</span>"
+                html += `<span data-freeshow-text="true" class="${a.customType && !a.customType.includes("jw") ? "custom" : ""}" ${plain ? `data-text-index="${tIndex}"` : textStyle}${textScope} data-customtype='${a.customType || ""}' data-sourcedynamickey='${a.sourceDynamicKey || ""}' data-chords='${JSON.stringify(textChords)}'>` + value + "</span>"
             })
             html += "</div>"
         })

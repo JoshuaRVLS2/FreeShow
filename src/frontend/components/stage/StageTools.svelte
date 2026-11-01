@@ -2,6 +2,7 @@
     import type { TabsObj } from "../../../types/Tabs"
     import { activeStage, outputs, stageShows } from "../../stores"
     import { getAccess } from "../../utils/profile"
+    import { isTypingTarget } from "../../utils/shortcutsHelper"
     import { getItemKeys } from "../edit/scripts/itemClipboard"
     import { addStyleString } from "../edit/scripts/textStyle"
     import { itemBoxes } from "../edit/values/boxes"
@@ -129,7 +130,7 @@
     // KEYDOWN EVENT
 
     function keydown(e: KeyboardEvent) {
-        if (document.activeElement?.closest(".edit")) return
+        if (document.activeElement?.closest(".edit") || isTypingTarget(document.activeElement)) return
 
         let stageId = $activeStage.id
         let activeItems = $activeStage.items

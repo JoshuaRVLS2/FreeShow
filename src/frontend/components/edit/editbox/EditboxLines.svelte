@@ -12,7 +12,8 @@
     import { addToPos } from "../../helpers/mover"
     import { getLayoutRef } from "../../helpers/show"
     import { _show } from "../../helpers/shows"
-    import { getStyles } from "../../helpers/style"
+    import { getItemScope, getStyles } from "../../helpers/style"
+    import ItemCSS from "../../helpers/ItemCSS.svelte"
     import autosize, { getAutoSizeOptions } from "../scripts/autosize"
     import { calculateShapeVerticalOffset, getShapeFloatSide } from "../scripts/shapeOutside"
     import { getItemText, getLineText, getSelectionRange, setCaret } from "../scripts/textStyle"
@@ -33,8 +34,11 @@
     export let chordsMode = false
     export let chordsAction = ""
     export let isLocked = false
+    export let scope = ""
 
     let textElem: HTMLElement | undefined
+    $: baseScope = scope || getItemScope(ref, index, item)
+    $: cssPrefix = `${baseScope}-`
     let html = ""
     let previousHTML = ""
     let currentStyle = ""
@@ -113,7 +117,7 @@
         if (composing) return
         if (!plain && $activeEdit.slide === null) return
 
-        let result = EditboxHelper.getStyleHtml(item, plain, currentStyle, ref.origin === "powerpoint")
+        let result = EditboxHelper.getStyleHtml(item, plain, currentStyle, ref.origin === "powerpoint", baseScope)
         html = result.html
         currentStyle = result.currentStyle
         previousHTML = html
@@ -734,6 +738,13 @@
 </script>
 
 <svelte:window on:keydown={keydown} />
+
+{#each item?.lines || [] as line, i}
+    <ItemCSS css={line.align} scope={`${baseScope}-l${i}`} prefix={cssPrefix} />
+    {#each line.text || [] as text, ti}
+        <ItemCSS css={text.style} scope={`${baseScope}-s${i}-${ti}`} prefix={cssPrefix} />
+    {/each}
+{/each}
 
 {#if item?.lines}
     <div bind:this={alignElem} class="align" class:chords={chordsMode} class:plain style={plain ? null : item.align || null}>
